@@ -18,7 +18,9 @@
 #   REVISION     the commit to record (default: git rev-parse HEAD)
 #   PUBLISH_CHART_REPLACE=1   stable only, while a component still republishes one version
 #                (3.5.0) from its main branch: replace it instead of failing. The chart
-#                repository allows that only for the charts it lists as unguarded.
+#                repository allows that only for the charts it lists as unguarded. The
+#                chart's own appVersion is kept, so the replacement differs from before
+#                only in what the chart directory changed.
 # Needs helm, git, tar and diff.
 set -eu
 
@@ -63,7 +65,11 @@ if grep -q '^dependencies:' "$work/chart/Chart.yaml"; then
 fi
 helm lint "$work/chart" >/dev/null
 mkdir -p "$work/dist"
-helm package "$work/chart" --version "$version" --app-version "$app_version" -d "$work/dist" >/dev/null
+if [ "$channel" = stable ] && [ "${PUBLISH_CHART_REPLACE:-0}" = 1 ]; then
+  helm package "$work/chart" --version "$version" -d "$work/dist" >/dev/null
+else
+  helm package "$work/chart" --version "$version" --app-version "$app_version" -d "$work/dist" >/dev/null
+fi
 package="$name-$version.tgz"
 test -f "$work/dist/$package" || { echo "publish-chart.sh: helm made no $package" >&2; exit 1; }
 
