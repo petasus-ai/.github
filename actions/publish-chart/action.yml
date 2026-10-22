@@ -1,0 +1,48 @@
+name: Publish a Petasus chart
+description: >-
+  Package a Helm chart and push it to petasus-ai/edgestack-helm: the dev channel
+  (0.0.0-dev, replaced on every build) or the stable channel (a release version, never
+  replaced). See publish-chart.sh.
+inputs:
+  chart:
+    description: The chart directory.
+    required: true
+  channel:
+    description: dev or stable.
+    required: true
+  version:
+    description: The release version (stable), with or without a leading v.
+    required: false
+    default: ""
+  token:
+    description: A token that can push to petasus-ai/edgestack-helm.
+    required: true
+  replace:
+    description: >-
+      "true" lets stable replace a published version; only for charts still republished
+      from a main branch during the move to versioned releases (3.5.0).
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: azure/setup-helm@v4
+      with:
+        version: v3.18.4
+    - name: Publish
+      shell: bash
+      env:
+        CHART: ${{ inputs.chart }}
+        CHANNEL: ${{ inputs.channel }}
+        VERSION: ${{ inputs.version }}
+        TOKEN: ${{ inputs.token }}
+        REPLACE: ${{ inputs.replace }}
+        REVISION: ${{ github.sha }}
+      run: |
+        auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')
+        echo "::add-mask::$auth"
+        export CHART_REPO=https://github.com/petasus-ai/edgestack-helm.git
+        export CHART_REPO_AUTH="AUTHORIZATION: basic $auth"
+        export REVISION
+        [ "$REPLACE" = true ] && export PUBLISH_CHART_REPLACE=1
+        sh "$GITHUB_ACTION_PATH/publish-chart.sh" "$CHART" "$CHANNEL" $VERSION
