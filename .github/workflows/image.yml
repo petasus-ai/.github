@@ -1,0 +1,186 @@
+name: Image
+
+# A reusable workflow for a repository that ships one container image. The default
+# branch publishes :dev. A tag vX.Y.Z (or vX.Y.Z-rc.N / vX.Y.Z-petasus.N) on release-X.Y,
+# checked by guard-release-tag, publishes :vX.Y.Z once - a published release is never
+# built again - and latest when it is the newest final release. Other branches and pull
+# requests only build. Each architecture builds on its own runner, without QEMU, and the
+# images carry the OCI revision/version/source labels; VERSION is passed as a build arg.
+#
+#   on:
+#     push:
+#       branches: [main]
+#       tags: ["v*"]
+#     pull_request: {}
+#   jobs:
+#     image:
+#       uses: petasus-ai/.github/.github/workflows/image.yml@<commit>
+#       with:
+#         image: quay.io/edgestack/my-component
+#       secrets:
+#         registry-password: ${{ secrets.QUAY_CI_BOT_SECRET }}
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: The image to publish, without a tag.
+        required: true
+        type: string
+      registry:
+        description: The registry host the image lives on.
+        type: string
+        default: quay.io
+      registry-user:
+        description: The user to log in to the registry with.
+        type: string
+        default: edgestack
+      context:
+        type: string
+        default: .
+      dockerfile:
+        type: string
+        default: Dockerfile
+      build-args:
+        description: Extra build args, one KEY=value per line.
+        type: string
+        default: ""
+    secrets:
+      registry-password:
+        required: true
+
+jobs:
+  plan:
+    name: Plan the image
+    runs-on: ubuntu-latest
+    outputs:
+      push: ${{ steps.plan.outputs.push }}
+      tags: ${{ steps.plan.outputs.tags }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Guard the release tag
+        if: github.ref_type == 'tag'
+        uses: petasus-ai/.github/actions/guard-release-tag@987c4fc41f565d88e8879d2e204ff0d2ef369605
+      - name: Decide what to publish
+        id: plan
+        env:
+          IMAGE: ${{ inputs.image }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          final='v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)'
+          tags=""
+          version="$(git rev-parse --short=12 HEAD)"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version=$GITHUB_REF_NAME
+            if docker buildx imagetools inspect "$IMAGE:$GITHUB_REF_NAME" >/dev/null 2>&1; then
+              echo "::notice::$IMAGE:$GITHUB_REF_NAME is already published; a release is never rebuilt."
+            else
+              tags=$GITHUB_REF_NAME
+              newest=$(git tag -l 'v*' | { grep -Ex "$final" || true; } | sort -V | tail -n 1)
+              [ "$newest" = "$GITHUB_REF_NAME" ] && tags="$tags latest"
+            fi
+          elif [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ]; then
+            tags=dev
+          fi
+          push=false
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$tags" ]; then
+            push=true
+          fi
+          echo "push=$push tags='$tags' version=$version"
+          { echo "push=$push"; echo "tags=$tags"; echo "version=$version"; } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Image (${{ matrix.platform }})
+    needs: plan
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Derive a filename-safe platform slug
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: echo "PLATFORM_SLUG=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to the registry
+        if: needs.plan.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ inputs.registry-user }}
+          password: ${{ secrets.registry-password }}
+      - name: Build (and push by digest)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.context }}/${{ inputs.dockerfile }}
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            VERSION=${{ needs.plan.outputs.version }}
+            ${{ inputs.build-args }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.plan.outputs.version }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          provenance: false
+          sbom: false
+          outputs: ${{ needs.plan.outputs.push == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', inputs.image) || 'type=cacheonly' }}
+      - name: Export the digest
+        if: needs.plan.outputs.push == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v4
+        if: needs.plan.outputs.push == 'true'
+        with:
+          name: digests-${{ env.PLATFORM_SLUG }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  manifest:
+    name: Manifest list
+    needs: [plan, build]
+    if: needs.plan.outputs.push == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ inputs.registry-user }}
+          password: ${{ secrets.registry-password }}
+      - name: Join the architectures and check them
+        working-directory: /tmp/digests
+        env:
+          IMAGE: ${{ inputs.image }}
+          TAGS: ${{ needs.plan.outputs.tags }}
+        run: |
+          set -euo pipefail
+          args=()
+          for tag in $TAGS; do args+=(-t "$IMAGE:$tag"); done
+          # shellcheck disable=SC2046 # one argument per digest file
+          docker buildx imagetools create "${args[@]}" $(printf "$IMAGE@sha256:%s " *)
+          for tag in $TAGS; do
+            got=$(docker buildx imagetools inspect "$IMAGE:$tag" --raw | jq -r '[.manifests[].platform | "\(.os)/\(.architecture)"] | sort | join(" ")')
+            echo "$IMAGE:$tag: $got"
+            [ "$got" = "linux/amd64 linux/arm64" ] || { echo "::error::$IMAGE:$tag has $got"; exit 1; }
+          done

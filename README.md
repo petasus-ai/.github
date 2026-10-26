@@ -43,3 +43,26 @@ steps:
       version: ${{ github.ref_name }}
       token: ${{ secrets.MY_TOKEN }}
 ```
+
+## .github/workflows/image.yml
+
+A reusable workflow for a repository that ships one container image: the default branch
+publishes `:dev`, a release tag `vX.Y.Z` on `release-X.Y` (checked by
+`guard-release-tag`) publishes `:vX.Y.Z` once and `latest` when it is the newest final
+release, and other branches and pull requests only build. Each architecture builds on
+its own runner and the images carry the OCI revision/version/source labels.
+
+```yaml
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request: {}
+jobs:
+  image:
+    uses: petasus-ai/.github/.github/workflows/image.yml@<commit>
+    with:
+      image: quay.io/edgestack/my-component
+    secrets:
+      registry-password: ${{ secrets.QUAY_CI_BOT_SECRET }}
+```
