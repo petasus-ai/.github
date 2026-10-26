@@ -101,13 +101,22 @@ if git diff --cached --quiet; then
   echo "$package is unchanged"
   exit 0
 fi
-git -c user.name=edgestack-bot -c user.email=edgestack-bot@users.noreply.github.com \
-  commit -q -m "$name $version ($revision)"
+# The identity covers the rebase below as well, which rewrites the commit; runners have
+# no global git identity.
+export GIT_AUTHOR_NAME=edgestack-bot GIT_COMMITTER_NAME=edgestack-bot
+export GIT_AUTHOR_EMAIL=edgestack-bot@users.noreply.github.com
+export GIT_COMMITTER_EMAIL=edgestack-bot@users.noreply.github.com
+git commit -q -m "$name $version ($revision)"
 # The repository's workflow commits the index after every chart and other charts are
 # published at the same time, so the branch may have moved.
 i=0
 while :; do
-  remote_git pull -q --rebase origin "$branch" && remote_git push -q origin "HEAD:$branch" && break
+  if remote_git pull -q --rebase origin "$branch"; then
+    remote_git push -q origin "HEAD:$branch" && break
+  else
+    # A rebase that stopped leaves the index dirty, which fails every later pull.
+    git rebase --abort 2>/dev/null || true
+  fi
   i=$((i + 1))
   [ "$i" -lt 5 ] || { echo "publish-chart.sh: could not push $package" >&2; exit 1; }
   sleep $((i * 5))
