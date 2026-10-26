@@ -66,3 +66,9 @@ jobs:
     secrets:
       registry-password: ${{ secrets.QUAY_CI_BOT_SECRET }}
 ```
+
+## Versions
+
+`actions/github-release` and `.github/workflows/image.yml` are referenced as `@v1`, a tag
+moved to each compatible fix, so a fix reaches every repository at once. The other actions
+stay pinned by commit.
