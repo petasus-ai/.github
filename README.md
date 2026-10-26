@@ -24,7 +24,8 @@ template in `PETASUS/ci-templates`.
 
 ## actions/guard-release-tag
 
-Fails unless the tag is `vX.Y.Z` or `vX.Y.Z-rc.N` and its commit is on the `release-X.Y`
+Fails unless the tag is `vX.Y.Z`, `vX.Y.Z-rc.N` or, for a fork of an upstream project,
+`vX.Y.Z-petasus.N` (on top of upstream `vX.Y.Z`), and its commit is on the `release-X.Y`
 branch, the same rule as the release template in `PETASUS/ci-templates`. Run it before
 publishing anything from a tag:
 

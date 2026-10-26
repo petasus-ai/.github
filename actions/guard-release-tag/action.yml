@@ -1,7 +1,8 @@
 name: Guard a Petasus release tag
 description: >-
-  Fail unless the tag is vX.Y.Z or vX.Y.Z-rc.N and its commit is on the release-X.Y
-  branch, the rule PETASUS/ci-templates' release.gitlab-ci.yml applies on GitLab.
+  Fail unless the tag is vX.Y.Z, vX.Y.Z-rc.N or, for a fork, vX.Y.Z-petasus.N and its
+  commit is on the release-X.Y branch, the rule PETASUS/ci-templates' release.gitlab-ci.yml
+  applies on GitLab.
 inputs:
   path:
     description: The checkout of the tagged repository.
@@ -21,8 +22,8 @@ runs:
         TAG: ${{ inputs.tag }}
       run: |
         set -eu
-        if ! printf '%s\n' "$TAG" | grep -Eqx 'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?'; then
-          echo "::error::$TAG is not vX.Y.Z or vX.Y.Z-rc.N"
+        if ! printf '%s\n' "$TAG" | grep -Eqx 'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(rc|petasus)\.(0|[1-9][0-9]*))?'; then
+          echo "::error::$TAG is not vX.Y.Z, vX.Y.Z-rc.N or vX.Y.Z-petasus.N"
           exit 1
         fi
         minor=${TAG#v}
