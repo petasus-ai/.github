@@ -17,6 +17,10 @@ inputs:
   token:
     description: A token that can push to petasus-ai/edgestack-helm.
     required: true
+  app-version:
+    description: The appVersion to stamp instead of the default (dev, or v<version>).
+    required: false
+    default: ""
   replace:
     description: >-
       "true" lets stable replace a published version; only for charts still republished
@@ -37,6 +41,7 @@ runs:
         VERSION: ${{ inputs.version }}
         TOKEN: ${{ inputs.token }}
         REPLACE: ${{ inputs.replace }}
+        APP_VERSION: ${{ inputs.app-version }}
         REVISION: ${{ github.sha }}
       run: |
         auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')
@@ -45,4 +50,5 @@ runs:
         export CHART_REPO_AUTH="AUTHORIZATION: basic $auth"
         export REVISION
         [ "$REPLACE" = true ] && export PUBLISH_CHART_REPLACE=1
+        [ -n "$APP_VERSION" ] && export PUBLISH_CHART_APP_VERSION="$APP_VERSION"
         sh "$GITHUB_ACTION_PATH/publish-chart.sh" "$CHART" "$CHANNEL" $VERSION

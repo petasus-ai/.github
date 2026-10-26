@@ -16,6 +16,8 @@
 #                the caller sets GIT_SSH_COMMAND, or an https URL and CHART_REPO_AUTH)
 #   CHART_REPO_AUTH   optional "Authorization: ..." header for an https CHART_REPO
 #   REVISION     the commit to record (default: git rev-parse HEAD)
+#   PUBLISH_CHART_APP_VERSION   the appVersion to stamp instead of the default (dev, or
+#                v<version>; kept from Chart.yaml when replacing)
 #   PUBLISH_CHART_REPLACE=1   stable only, while a component still republishes one version
 #                (3.5.0) from its main branch: replace it instead of failing. The chart
 #                repository allows that only for the charts it lists as unguarded. The
@@ -65,7 +67,9 @@ if grep -q '^dependencies:' "$work/chart/Chart.yaml"; then
 fi
 helm lint "$work/chart" >/dev/null
 mkdir -p "$work/dist"
-if [ "$channel" = stable ] && [ "${PUBLISH_CHART_REPLACE:-0}" = 1 ]; then
+if [ -n "${PUBLISH_CHART_APP_VERSION:-}" ]; then
+  helm package "$work/chart" --version "$version" --app-version "$PUBLISH_CHART_APP_VERSION" -d "$work/dist" >/dev/null
+elif [ "$channel" = stable ] && [ "${PUBLISH_CHART_REPLACE:-0}" = 1 ]; then
   helm package "$work/chart" --version "$version" -d "$work/dist" >/dev/null
 else
   helm package "$work/chart" --version "$version" --app-version "$app_version" -d "$work/dist" >/dev/null
