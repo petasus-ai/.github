@@ -67,6 +67,25 @@ jobs:
       registry-password: ${{ secrets.QUAY_CI_BOT_SECRET }}
 ```
 
+## renovate/default.json
+
+The Renovate settings every petasus-ai repository shares (the Mend-hosted Renovate app
+runs them): minor, patch and digest updates merge themselves once the checks pass, major
+updates and Kubernetes minors wait for review, GitHub Actions share one PR, image digests
+are not pinned, commits read `Chore: update ...`, and the shared pieces of this
+repository are left alone. A repository's `renovate.json` extends it and adds only what
+is its own:
+
+```json
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>petasus-ai/.github//renovate/default"]
+}
+```
+
+The app runs only on the repositories it is given (organization settings, GitHub Apps,
+Renovate, Repository access).
+
 ## Versions
 
 `actions/github-release` and `.github/workflows/image.yml` are referenced as `@v1`, a tag

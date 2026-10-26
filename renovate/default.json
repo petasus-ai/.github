@@ -1,0 +1,92 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Renovate defaults of petasus-ai repositories. A repository's renovate.json extends github>petasus-ai/.github//renovate/default and adds only what is its own.",
+  "extends": ["config:recommended", ":configMigration"],
+  "timezone": "Asia/Seoul",
+  "labels": ["dependencies"],
+  "osvVulnerabilityAlerts": true,
+  "minimumReleaseAge": "3 days",
+  "prConcurrentLimit": 5,
+  "platformAutomerge": true,
+  "pinDigests": false,
+  "postUpdateOptions": ["gomodTidy"],
+  "semanticCommits": "disabled",
+  "commitMessagePrefix": "Chore:",
+  "commitMessageAction": "update",
+  "packageRules": [
+    {
+      "description": "Minor, patch and digest updates merge themselves once the checks pass.",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "automerge": true
+    },
+    {
+      "description": "Major updates wait for review.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
+      "description": "One PR for all GitHub Actions updates.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions dependencies"
+    },
+    {
+      "description": "The shared pieces of this repository are moved by hand: the moving tag v1, or a commit chosen on purpose.",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["petasus-ai/.github"],
+      "enabled": false
+    },
+    {
+      "description": "The Go toolchain in go.mod and the golang image in the Dockerfile move together, or the image builds with a toolchain the module does not declare.",
+      "matchManagers": ["gomod", "dockerfile"],
+      "matchPackageNames": ["go", "golang"],
+      "groupName": "go toolchain"
+    },
+    {
+      "description": "The Kubernetes staging modules move as a set: a client-go that disagrees with apimachinery does not build.",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": [
+        "k8s.io/api",
+        "k8s.io/apimachinery",
+        "k8s.io/apiserver",
+        "k8s.io/client-go",
+        "k8s.io/component-base",
+        "k8s.io/component-helpers",
+        "k8s.io/cri-api",
+        "k8s.io/dynamic-resource-allocation",
+        "k8s.io/kubelet",
+        "k8s.io/kubernetes"
+      ],
+      "groupName": "kubernetes staging modules"
+    },
+    {
+      "description": "A Kubernetes minor can move the APIs a component is built against, so it waits for review; patches still merge themselves.",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": [
+        "k8s.io/api",
+        "k8s.io/apimachinery",
+        "k8s.io/apiserver",
+        "k8s.io/client-go",
+        "k8s.io/component-base",
+        "k8s.io/component-helpers",
+        "k8s.io/cri-api",
+        "k8s.io/dynamic-resource-allocation",
+        "k8s.io/kubelet",
+        "k8s.io/kubernetes"
+      ],
+      "matchUpdateTypes": ["major", "minor"],
+      "automerge": false
+    }
+  ],
+  "customManagers": [
+    {
+      "description": "The Helm version azure/setup-helm installs. It is a tool version rather than a dependency, so the github-actions manager cannot see it.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": [
+        "azure/setup-helm@[^\\n]*\\n(?:[^\\n]*\\n)*?\\s*version:\\s*(?<currentValue>v[\\d.]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "helm/helm"
+    }
+  ]
+}
