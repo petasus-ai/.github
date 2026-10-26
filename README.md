@@ -21,3 +21,24 @@ Publishes a Helm chart to [petasus-ai/edgestack-helm](https://github.com/petasus
 
 GitLab jobs run the same `publish-chart.sh`, fetched at a pinned commit, through the
 template in `PETASUS/ci-templates`.
+
+## actions/guard-release-tag
+
+Fails unless the tag is `vX.Y.Z` or `vX.Y.Z-rc.N` and its commit is on the `release-X.Y`
+branch, the same rule as the release template in `PETASUS/ci-templates`. Run it before
+publishing anything from a tag:
+
+```yaml
+on:
+  push:
+    tags: ["v*"]
+steps:
+  - uses: actions/checkout@v4
+  - uses: petasus-ai/.github/actions/guard-release-tag@<commit>
+  - uses: petasus-ai/.github/actions/publish-chart@<commit>
+    with:
+      chart: .
+      channel: stable
+      version: ${{ github.ref_name }}
+      token: ${{ secrets.MY_TOKEN }}
+```

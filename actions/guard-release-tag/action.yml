@@ -1,0 +1,45 @@
+name: Guard a Petasus release tag
+description: >-
+  Fail unless the tag is vX.Y.Z or vX.Y.Z-rc.N and its commit is on the release-X.Y
+  branch, the rule PETASUS/ci-templates' release.gitlab-ci.yml applies on GitLab.
+inputs:
+  path:
+    description: The checkout of the tagged repository.
+    required: false
+    default: "."
+  tag:
+    description: The tag to check.
+    required: false
+    default: ${{ github.ref_name }}
+runs:
+  using: composite
+  steps:
+    - name: Guard
+      shell: bash
+      env:
+        REPO_DIR: ${{ inputs.path }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        set -eu
+        if ! printf '%s\n' "$TAG" | grep -Eqx 'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?'; then
+          echo "::error::$TAG is not vX.Y.Z or vX.Y.Z-rc.N"
+          exit 1
+        fi
+        minor=${TAG#v}
+        minor=${minor%%-*}
+        minor=${minor%.*}
+        branch=release-$minor
+        cd "$REPO_DIR"
+        # The containment check needs the history, which a default checkout leaves out.
+        if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+          git fetch -q --no-tags --unshallow origin
+        fi
+        if ! git fetch -q --no-tags origin "+refs/heads/$branch:refs/remotes/origin/$branch"; then
+          echo "::error::$TAG needs a $branch branch to release from"
+          exit 1
+        fi
+        if ! git merge-base --is-ancestor HEAD "origin/$branch"; then
+          echo "::error::$TAG is not on $branch; releases of $minor are tagged there"
+          exit 1
+        fi
+        echo "$TAG is on $branch"
