@@ -3,15 +3,18 @@ name: Image
 # A reusable workflow for a repository that ships one container image. The default
 # branch publishes :dev. A tag vX.Y.Z (or vX.Y.Z-rc.N / vX.Y.Z-petasus.N) on release-X.Y,
 # checked by guard-release-tag, publishes :vX.Y.Z once - a published release is never
-# built again - and latest when it is the newest final release. Other branches and pull
-# requests only build. Each architecture builds on its own runner, without QEMU, and the
-# images carry the OCI revision/version/source labels; VERSION is passed as a build arg.
+# built again - and latest when it is the newest final release, then the tag's GitHub
+# release (the caller grants contents: write). Other branches and pull requests only
+# build. Each architecture builds on its own runner, without QEMU, and the images carry
+# the OCI revision/version/source labels; VERSION is passed as a build arg.
 #
 #   on:
 #     push:
 #       branches: [main]
 #       tags: ["v*"]
 #     pull_request: {}
+#   permissions:
+#     contents: write
 #   jobs:
 #     image:
 #       uses: petasus-ai/.github/.github/workflows/image.yml@<commit>
@@ -184,3 +187,19 @@ jobs:
             echo "$IMAGE:$tag: $got"
             [ "$got" = "linux/amd64 linux/arm64" ] || { echo "::error::$IMAGE:$tag has $got"; exit 1; }
           done
+
+  release:
+    name: GitHub release
+    needs: [plan, manifest]
+    # Also when the image was out already (a rerun), so a release page left undone is made.
+    if: always() && github.ref_type == 'tag' && needs.plan.result == 'success' && needs.manifest.result != 'failure' && needs.manifest.result != 'cancelled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: petasus-ai/.github/actions/github-release@075f162d2915e6506467a03465a6c25bf971f8a1
+        with:
+          token: ${{ github.token }}
