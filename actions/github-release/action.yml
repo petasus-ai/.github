@@ -1,0 +1,63 @@
+name: Publish a GitHub release for a Petasus release tag
+description: >-
+  Create the GitHub release of a release tag (vX.Y.Z, vX.Y.Z-rc.N, vX.Y.Z-petasus.N) with
+  the commits since the previous release as its notes, the way the release template of
+  PETASUS/ci-templates does on GitLab. A release that exists already is left as it is, so
+  a rerun is harmless; an -rc tag is marked a prerelease.
+inputs:
+  path:
+    description: The checkout of the tagged repository (with its history and tags).
+    required: false
+    default: "."
+  tag:
+    description: The release tag.
+    required: false
+    default: ${{ github.ref_name }}
+  token:
+    description: A token that can write the repository's releases (contents write).
+    required: true
+  files:
+    description: Files to attach, one per line.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Release
+      shell: bash
+      env:
+        REPO_DIR: ${{ inputs.path }}
+        TAG: ${{ inputs.tag }}
+        GH_TOKEN: ${{ inputs.token }}
+        FILES: ${{ inputs.files }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        cd "$REPO_DIR"
+        if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
+          echo "release $TAG exists already"
+          exit 0
+        fi
+        if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+          git fetch -q --unshallow --tags origin
+        fi
+        previous=$(git tag -l 'v*' --merged "$TAG" | grep -vx "$TAG" \
+          | { grep -Ex 'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(rc|petasus)\.(0|[1-9][0-9]*))?' || true; } \
+          | sort -V | tail -n 1)
+        {
+          if [ -n "$previous" ]; then
+            echo "Changes since $previous:"
+            range="$previous..$TAG"
+          else
+            echo "First release."
+            range="$TAG"
+          fi
+          echo
+          git log --no-merges --max-count=300 --format='- %s (%h)' "$range"
+        } > "$RUNNER_TEMP/release-notes.md"
+        args=(--title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --verify-tag)
+        case "$TAG" in *-rc.*) args+=(--prerelease) ;; esac
+        files=()
+        while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done <<< "$FILES"
+        gh release create "$TAG" -R "$REPO" "${args[@]}" "${files[@]}"
+        echo "release $TAG created"
