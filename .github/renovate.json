@@ -1,4 +1,13 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>petasus-ai/.github//renovate/default"]
+  "extends": ["github>petasus-ai/.github//renovate/default"],
+  "packageRules": [
+    {
+      "description": "The chart publisher packages every Petasus chart; a Helm major waits until it is checked against the published charts and index.",
+      "matchDepNames": ["helm/helm"],
+      "matchFileNames": ["actions/publish-chart/action.yml"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
 }
