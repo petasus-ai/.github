@@ -2,7 +2,8 @@ name: Guard a Petasus release tag
 description: >-
   Fail unless the tag is vX.Y.Z, vX.Y.Z-rc.N or, for a fork, vX.Y.Z-petasus.N and its
   commit is on the release-X.Y branch, the rule PETASUS/ci-templates' release.gitlab-ci.yml
-  applies on GitLab.
+  applies on GitLab, or on release-X.Y.Z for a repository whose release lines follow patch
+  versions (release-branch: X.Y.Z).
 inputs:
   path:
     description: The checkout of the tagged repository.
@@ -12,6 +13,10 @@ inputs:
     description: The tag to check.
     required: false
     default: ${{ github.ref_name }}
+  release-branch:
+    description: The version the release branch is named after, X.Y (release-X.Y) or X.Y.Z (release-X.Y.Z).
+    required: false
+    default: X.Y
 runs:
   using: composite
   steps:
@@ -20,16 +25,21 @@ runs:
       env:
         REPO_DIR: ${{ inputs.path }}
         TAG: ${{ inputs.tag }}
+        RELEASE_BRANCH: ${{ inputs.release-branch }}
       run: |
         set -eu
         if ! printf '%s\n' "$TAG" | grep -Eqx 'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(rc|petasus)\.(0|[1-9][0-9]*))?'; then
           echo "::error::$TAG is not vX.Y.Z, vX.Y.Z-rc.N or vX.Y.Z-petasus.N"
           exit 1
         fi
-        minor=${TAG#v}
-        minor=${minor%%-*}
-        minor=${minor%.*}
-        branch=release-$minor
+        line=${TAG#v}
+        line=${line%%-*}
+        case "$RELEASE_BRANCH" in
+          X.Y) line=${line%.*} ;;
+          X.Y.Z) ;;
+          *) echo "::error::release-branch is X.Y or X.Y.Z, not $RELEASE_BRANCH"; exit 1 ;;
+        esac
+        branch=release-$line
         cd "$REPO_DIR"
         # The containment check needs the history, which a default checkout leaves out.
         if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
@@ -40,7 +50,7 @@ runs:
           exit 1
         fi
         if ! git merge-base --is-ancestor HEAD "origin/$branch"; then
-          echo "::error::$TAG is not on $branch; releases of $minor are tagged there"
+          echo "::error::$TAG is not on $branch; releases of $line are tagged there"
           exit 1
         fi
         echo "$TAG is on $branch"
